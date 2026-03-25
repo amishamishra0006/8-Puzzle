@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>8 Puzzle AI Pro</title>
+
+<style>
+:root{
+    --bg:#0f172a;
+    --card:#1e293b;
+    --tile:#22c55e;
+    --text:white;
+}
+
+.light{
+    --bg:#f1f5f9;
+    --card:white;
+    --tile:#16a34a;
+    --text:#111;
+}
+
+body{
+    margin:0;
+    font-family:Segoe UI;
+    background:var(--bg);
+    color:var(--text);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    transition:0.3s;
+}
+
+.container{
+    text-align:center;
+    background:var(--card);
+    padding:25px;
+    border-radius:20px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.3);
+    width:350px;
+}
+
+h1{margin:10px;}
+
+#board{
+    width:300px;
+    height:300px;
+    margin:15px auto;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:8px;
+}
+
+.tile{
+    background:var(--tile);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:26px;
+    border-radius:12px;
+    cursor:pointer;
+    transition:0.2s;
+}
+
+.tile:hover{transform:scale(1.05);}
+.empty{background:rgba(255,255,255,0.1); cursor:default;}
+
+button{
+    padding:8px 14px;
+    margin:4px;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+}
+
+.controls{margin-top:10px;}
+
+.info{font-size:14px; margin-top:5px;}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>8 Puzzle AI Pro</h1>
+
+<div id="board"></div>
+
+<div class="controls">
+<button onclick="shuffleBoard()">Shuffle</button>
+<button onclick="solvePuzzle()">Solve (A*)</button>
+<button onclick="toggleTheme()">🌗</button>
+</div>
+
+<p id="moves">Moves: 0</p>
+<p id="timer">Time: 0s</p>
+<p id="best">Best: --</p>
+<p class="info" id="status">Ready</p>
+
+</div>
+
+<script>
+
+let board=[1,2,3,4,5,6,7,8,0];
+let goal="1,2,3,4,5,6,7,8,0";
+let moves=0;
+let seconds=0;
+let timerInterval=null;
+
+const moveSound=new Audio("https://www.soundjay.com/buttons/sounds/button-09.mp3");
+const winSound=new Audio("https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3");
+
+function startTimer(){
+    seconds=0;
+    clearInterval(timerInterval);
+    timerInterval=setInterval(()=>{
+        seconds++;
+        document.getElementById("timer").innerText="Time: "+seconds+"s";
+    },1000);
+}
+
+function renderBoard(){
+    const boardDiv=document.getElementById("board");
+    boardDiv.innerHTML="";
+
+    board.forEach((val,index)=>{
+        const tile=document.createElement("div");
+        tile.classList.add("tile");
+
+        if(val===0){
+            tile.classList.add("empty");
+        }else{
+            tile.innerText=val;
+            tile.onclick=()=>moveTile(index);
+        }
+
+        boardDiv.appendChild(tile);
+    });
+
+    document.getElementById("moves").innerText="Moves: "+moves;
+}
+
+function moveTile(index){
+    let empty=board.indexOf(0);
+    let valid=[empty-1,empty+1,empty-3,empty+3];
+
+    if(valid.includes(index)){
+        [board[index],board[empty]]=[board[empty],board[index]];
+        moves++;
+        moveSound.play();
+        renderBoard();
+        checkWin();
+    }
+}
+
+function shuffleBoard(){
+    do{
+        board.sort(()=>Math.random()-0.5);
+    }while(!isSolvable(board));
+
+    moves=0;
+    startTimer();
+    document.getElementById("status").innerText="Shuffled";
+    renderBoard();
+}
+
+function checkWin(){
+    if(board.toString()===goal){
+        clearInterval(timerInterval);
+        winSound.play();
+        document.getElementById("status").innerText="You Won 🎉";
+        saveBestScore();
+    }
+}
+
+function saveBestScore(){
+    let best=localStorage.getItem("bestScore");
+    if(!best || seconds<best){
+        localStorage.setItem("bestScore",seconds);
+    }
+    loadBestScore();
+}
+
+function loadBestScore(){
+    let best=localStorage.getItem("bestScore");
+    if(best){
+        document.getElementById("best").innerText="Best: "+best+"s";
+    }
+}
+loadBestScore();
+
+function toggleTheme(){
+    document.body.classList.toggle("light");
+}
+
+function isSolvable(state){
+    let inv=0;
+    for(let i=0;i<8;i++){
+        for(let j=i+1;j<9;j++){
+            if(state[i]&&state[j]&&state[i]>state[j]) inv++;
+        }
+    }
+    return inv%2===0;
+}
+
+function heuristic(state){
+    let dist=0;
+    state.forEach((val,i)=>{
+        if(val!==0){
+            let gx=Math.floor((val-1)/3);
+            let gy=(val-1)%3;
+            let x=Math.floor(i/3);
+            let y=i%3;
+            dist+=Math.abs(gx-x)+Math.abs(gy-y);
+        }
+    });
+    return dist;
+}
+
+function getNeighbors(state){
+    let neighbors=[];
+    let empty=state.indexOf(0);
+    let x=Math.floor(empty/3);
+    let y=empty%3;
+    let dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+
+    dirs.forEach(d=>{
+        let nx=x+d[0];
+        let ny=y+d[1];
+        if(nx>=0&&nx<3&&ny>=0&&ny<3){
+            let newState=state.slice();
+            let newIndex=nx*3+ny;
+            [newState[empty],newState[newIndex]]=
+            [newState[newIndex],newState[empty]];
+            neighbors.push(newState);
+        }
+    });
+    return neighbors;
+}
+
+function solvePuzzle(){
+    document.getElementById("status").innerText="AI Solving...";
+    let open=[];
+    let visited=new Set();
+
+    open.push({state:board.slice(),g:0,h:heuristic(board),parent:null});
+
+    while(open.length>0){
+        open.sort((a,b)=>(a.g+a.h)-(b.g+b.h));
+        let current=open.shift();
+
+        if(current.state.toString()===goal){
+            animateSolution(current);
+            return;
+        }
+
+        visited.add(current.state.toString());
+
+        getNeighbors(current.state).forEach(neighbor=>{
+            if(!visited.has(neighbor.toString())){
+                open.push({
+                    state:neighbor,
+                    g:current.g+1,
+                    h:heuristic(neighbor),
+                    parent:current
+                });
+            }
+        });
+    }
+}
+
+function animateSolution(node){
+    let path=[];
+    while(node){
+        path.unshift(node.state);
+        node=node.parent;
+    }
+
+    let i=0;
+    let interval=setInterval(()=>{
+        board=path[i];
+        renderBoard();
+        i++;
+        if(i>=path.length){
+            clearInterval(interval);
+            document.getElementById("status").innerText="Solved by AI ✅";
+        }
+    },350);
+}
+
+renderBoard();
+
+</script>
+
+</body>
+</html>
